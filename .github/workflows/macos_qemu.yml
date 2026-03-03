@@ -1,22 +1,25 @@
-name: MacOS QEMU on Linux
+name: MacOS QEMU on Linux (10 Mins Trial)
 
 on: 
-  workflow_dispatch:
+  workflow_dispatch: # Jalankan manual dari tab Actions
 
 jobs:
-  macos-qemu:
+  macos-session:
     runs-on: ubuntu-latest
+    timeout-minutes: 15 # Keamanan tambahan agar job mati otomatis
+    
     steps:
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Enable KVM & Install Tools
+      - name: Prepare KVM and Dependencies
         run: |
-          # Cek KVM Support
           sudo apt-get update
-          sudo apt-get install -y qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils
+          sudo apt-get install -y qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils cpu-checker
+          # Pastikan KVM bisa diakses tanpa root oleh docker
           sudo chmod 666 /dev/kvm
-          
+          kvm-ok # Cek apakah hardware acceleration aktif
+
       - name: Install Ngrok
         run: |
           curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
@@ -26,27 +29,41 @@ jobs:
 
       - name: Run MacOS Docker-OSX
         run: |
-          # Jalankan Docker-OSX (Monterey)
-          # Port 5900 adalah VNC, Port 22 adalah SSH
+          # Menggunakan Docker-OSX dengan alokasi RAM 4GB
+          # Port 5900 di mapping untuk VNC
           docker run -d \
             --device /dev/kvm \
             -p 5900:5900 \
-            -p 10022:22 \
             -v /tmp/.X11-unix:/tmp/.X11-unix \
             -e "RAM=4" \
-            sickcodes/docker-osx:monterey
+            -e "CORES=2" \
+            -e "VERSION=12" \
+            sickcodes/docker-osx:auto
 
-      - name: Start Tunnel & Get Address
+      - name: Create Ngrok Tunnel
         run: |
-          # Tunnel untuk VNC
-          nohup ngrok tcp 5900 --region jp &
-          sleep 10
-          echo "==============================================="
-          echo "ALAMAT VNC ANDA:"
+          # Menjalankan tunnel TCP pada port VNC 5900
+          nohup ngrok tcp 5900 --region ap & 
+          sleep 15 # Memberi waktu ngrok untuk booting
+
+      - name: Get Connection Details
+        run: |
+          echo "===================================================="
+          echo "🚀 MAC OS SIAP DIAKSES!"
+          echo "----------------------------------------------------"
+          echo "Alamat VNC (Gunakan di VNC Viewer):"
           curl --silent http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url'
-          echo "==============================================="
+          echo "----------------------------------------------------"
+          echo "Username default: arch"
+          echo "Password default: password"
+          echo "===================================================="
 
-      - name: 10 Minute Session
+      - name: 10 Minute Countdown
         run: |
-          echo "Mesin menyala. Silakan konek."
-          sleep 600
+          echo "Sesi dimulai. GitHub Actions akan otomatis dimatikan dalam 10 menit."
+          for i in {10..1}; do
+            echo "$i menit tersisa..."
+            sleep 60
+          done
+          echo "Waktu habis! Mematikan runner..."
+
